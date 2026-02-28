@@ -1,5 +1,9 @@
 # 求职面试复盘助手（Phase 3A）
 
+仓库首页（中文主 + 英文镜像）：
+- 中文：`../README.md`
+- English：`../README.en.md`
+
 技术栈：
 - Next.js App Router
 - 国内 LLM（智谱 / Minimax / 豆包）

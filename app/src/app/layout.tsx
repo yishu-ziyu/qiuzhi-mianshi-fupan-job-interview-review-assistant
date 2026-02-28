@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "求职面试复盘助手 MVP",
-  description: "面试后 10 分钟内完成结构化复盘与下轮改进建议",
+  title: "求职面试复盘助手 | Job Interview Review Assistant",
+  description: "中文优先的面试复盘与面试前准备系统（Chinese-first interview review and prep system）",
 };
 
 export default function RootLayout({
