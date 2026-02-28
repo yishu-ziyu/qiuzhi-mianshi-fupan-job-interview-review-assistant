@@ -357,16 +357,16 @@ npm run dev
 
 ### 4.15 闭环测试（建议每次改动后执行）
 
-1. 启动服务
-
-```bash
-npm run dev
-```
-
-2. 新开终端执行闭环脚本
+推荐一键执行（自动检测服务；未启动则自动拉起并在结束后关闭）：
 
 ```bash
 npm run test:closed-loop
+```
+
+如需手动模式（你自己先 `npm run dev`）：
+
+```bash
+npm run test:closed-loop:manual
 ```
 
 默认即为严格模式（`STRICT_MODE=true`）：
@@ -377,6 +377,18 @@ npm run test:closed-loop
 
 ```bash
 CLOSED_LOOP_MIN_SOURCES=5 CLOSED_LOOP_MIN_ACCEPTED_CLUSTERS=2 npm run test:closed-loop
+```
+
+如需增加 Deep Research 重试次数（默认 2 次）：
+
+```bash
+CLOSED_LOOP_DEEP_RESEARCH_ATTEMPTS=3 npm run test:closed-loop
+```
+
+如需调整单次接口超时（默认 300000ms）：
+
+```bash
+CLOSED_LOOP_TIMEOUT_MS=420000 npm run test:closed-loop
 ```
 
 如需临时关闭严格校验（仅排障使用）：

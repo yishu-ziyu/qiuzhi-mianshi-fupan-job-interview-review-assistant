@@ -7,7 +7,8 @@
     "build": "next build --webpack",
     "start": "next start",
     "lint": "eslint",
-    "test:closed-loop": "node scripts/closed_loop_e2e.mjs"
+    "test:closed-loop": "node scripts/closed_loop_auto.mjs",
+    "test:closed-loop:manual": "node scripts/closed_loop_e2e.mjs"
   },
   "dependencies": {
     "duck-duck-scrape": "^2.2.7",

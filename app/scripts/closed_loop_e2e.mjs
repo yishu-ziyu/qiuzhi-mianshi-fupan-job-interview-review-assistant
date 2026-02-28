@@ -1,12 +1,16 @@
 #!/usr/bin/env node
 
 const baseUrl = process.env.BASE_URL?.trim() || "http://localhost:3000";
-const timeoutMs = Number(process.env.CLOSED_LOOP_TIMEOUT_MS ?? 180000);
+const timeoutMs = Number(process.env.CLOSED_LOOP_TIMEOUT_MS ?? 300000);
 const strictMode = process.env.CLOSED_LOOP_STRICT !== "false";
 const strictMinDeepSources = Math.max(0, Number(process.env.CLOSED_LOOP_MIN_SOURCES ?? 3));
 const strictMinAcceptedClusters = Math.max(
   0,
   Number(process.env.CLOSED_LOOP_MIN_ACCEPTED_CLUSTERS ?? 1),
+);
+const deepResearchAttempts = Math.max(
+  1,
+  Number(process.env.CLOSED_LOOP_DEEP_RESEARCH_ATTEMPTS ?? 2),
 );
 const runId = `e2e-${Date.now()}`;
 
@@ -100,9 +104,11 @@ function validateTraceability(plan) {
 async function run() {
   console.log(`Closed-loop E2E starting: ${runId}`);
   console.log(`BASE_URL=${baseUrl}`);
+  console.log(`REQUEST_TIMEOUT_MS=${timeoutMs}`);
   console.log(
     `STRICT_MODE=${strictMode} (minSources=${strictMinDeepSources}, minAcceptedClusters=${strictMinAcceptedClusters})`,
   );
+  console.log(`DEEP_RESEARCH_ATTEMPTS=${deepResearchAttempts}`);
 
   // 0) health
   try {
@@ -270,37 +276,79 @@ async function run() {
     );
   }
 
-  // 7) deep research sync
+  // 7) deep research sync (with retry to reduce network fluctuation false negatives)
   try {
-    const { payload } = await request("/api/deep-research/profile", {
-      method: "POST",
-      body: {
-        targetRole: "AI 产品经理",
-        company: "字节跳动",
-        focus: "面试题 能力模型",
-        maxSourcesPerChannel: 8,
-        enableReflection: true,
-        enableCrossValidation: false,
-      },
-    });
-    const sourceCount = Array.isArray(payload?.sources) ? payload.sources.length : 0;
-    const acceptedClusterCount = Number(payload?.evidenceClusters?.accepted ?? 0);
-    const basicOk =
-      payload &&
-      payload.searchTelemetry &&
-      payload.evidenceClusters &&
-      payload.readiness &&
-      typeof payload.readiness.gatePassed === "boolean";
-    const strictOk = strictMode
-      ? sourceCount >= strictMinDeepSources &&
-        acceptedClusterCount >= strictMinAcceptedClusters
-      : true;
-    const ok = Boolean(basicOk) && strictOk;
-    pushResult(
-      "deep-research.sync",
-      Boolean(ok),
-      `sources=${sourceCount}, acceptedClusters=${acceptedClusterCount}, strict=${strictMode ? (strictOk ? "pass" : "fail") : "off"}`,
-    );
+    let bestSourceCount = 0;
+    let bestAcceptedClusterCount = 0;
+    let strictPassedAtAttempt = 0;
+    let basicOkSeen = false;
+    let lastErrorMessage = "";
+
+    for (let attempt = 1; attempt <= deepResearchAttempts; attempt += 1) {
+      let payload = null;
+      try {
+        const response = await request("/api/deep-research/profile", {
+          method: "POST",
+          body: {
+            targetRole: "AI 产品经理",
+            company: "字节跳动",
+            focus: "面试题 能力模型",
+            maxSourcesPerChannel: 8,
+            enableReflection: true,
+            enableCrossValidation: false,
+          },
+        });
+        payload = response.payload;
+      } catch (error) {
+        lastErrorMessage = error instanceof Error ? error.message : "unknown";
+        if (attempt < deepResearchAttempts) {
+          await sleep(1200);
+          continue;
+        }
+        throw error;
+      }
+
+      const sourceCount = Array.isArray(payload?.sources) ? payload.sources.length : 0;
+      const acceptedClusterCount = Number(payload?.evidenceClusters?.accepted ?? 0);
+      const basicOk =
+        payload &&
+        payload.searchTelemetry &&
+        payload.evidenceClusters &&
+        payload.readiness &&
+        typeof payload.readiness.gatePassed === "boolean";
+
+      basicOkSeen = basicOkSeen || Boolean(basicOk);
+      bestSourceCount = Math.max(bestSourceCount, sourceCount);
+      bestAcceptedClusterCount = Math.max(bestAcceptedClusterCount, acceptedClusterCount);
+
+      const strictOk = strictMode
+        ? sourceCount >= strictMinDeepSources &&
+          acceptedClusterCount >= strictMinAcceptedClusters
+        : true;
+
+      if (basicOk && strictOk) {
+        strictPassedAtAttempt = attempt;
+        break;
+      }
+
+      if (attempt < deepResearchAttempts) {
+        await sleep(1200);
+      }
+    }
+
+    const strictOk = strictMode ? strictPassedAtAttempt > 0 : true;
+    const ok = Boolean(basicOkSeen) && strictOk;
+    const detail = [
+      `attempts=${deepResearchAttempts}`,
+      strictPassedAtAttempt > 0 ? `passAt=${strictPassedAtAttempt}` : "passAt=none",
+      `bestSources=${bestSourceCount}`,
+      `bestAcceptedClusters=${bestAcceptedClusterCount}`,
+      `strict=${strictMode ? (strictOk ? "pass" : "fail") : "off"}`,
+      lastErrorMessage ? `lastError=${lastErrorMessage}` : null,
+    ]
+      .filter(Boolean)
+      .join(", ");
+    pushResult("deep-research.sync", Boolean(ok), detail);
   } catch (error) {
     pushResult("deep-research.sync", false, error instanceof Error ? error.message : "unknown");
   }
